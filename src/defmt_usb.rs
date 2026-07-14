@@ -224,14 +224,10 @@ impl LogBuffer {
     /// # Precondition
     ///
     /// Caller must have verified `accepts(bytes.len())` first.
-    fn write(&mut self, bytes: &[u8], threshold: usize) {
+    fn write(&mut self, bytes: &[u8]) {
         let cursor = self.cursor;
         self.data[cursor..cursor + bytes.len()].copy_from_slice(bytes);
         self.cursor += bytes.len();
-        // Auto-mark as flushing once the configured threshold is reached.
-        if self.cursor >= threshold {
-            self.state = BufState::Flush;
-        }
     }
 
     fn accepts(&self, n: usize) -> bool {
@@ -248,9 +244,6 @@ struct Controller {
     current_idx: AtomicUsize,
     /// Whether logging is enabled (disabled while USB is disconnected).
     enabled: PortableAtomicBool,
-    /// Number of bytes at which a buffer is automatically marked for flushing.
-    /// Settable at init time via [`UsbDefmtLogger::with_buflen`].
-    flush_threshold: AtomicUsize,
     /// Double-buffer pair.
     ///
     /// SAFETY: writes happen only within a critical section; reads only after
@@ -267,7 +260,6 @@ impl Controller {
         Self {
             current_idx: AtomicUsize::new(0),
             enabled: PortableAtomicBool::new(true),
-            flush_threshold: AtomicUsize::new(USB_BUF_SIZE - 2),
             buffers: [
                 UnsafeCell::new(LogBuffer::new()),
                 UnsafeCell::new(LogBuffer::new()),
@@ -320,19 +312,19 @@ impl Controller {
         let idx = self.current_idx.load(Ordering::Relaxed);
         let other = idx ^ 1;
         // SAFETY: inside critical section.
-        let threshold = self.flush_threshold.load(Ordering::Relaxed);
         let cur = unsafe { &mut *self.buffers[idx].get() };
         let oth = unsafe { &mut *self.buffers[other].get() };
 
         if cur.accepts(bytes.len()) {
-            cur.write(bytes, threshold);
+            cur.write(bytes);
         } else {
-            // Swap to the other buffer and try again.
+            // Active buffer is full mid-frame (frame exceeds USB_BUF_SIZE).
+            // Swap and fall back to the other buffer; bytes are silently
+            // dropped if both buffers are full.
             unsafe { self.swap() };
             if oth.accepts(bytes.len()) {
-                oth.write(bytes, threshold);
+                oth.write(bytes);
             }
-            // If neither buffer accepts, the frame is silently dropped.
         }
     }
 
@@ -487,20 +479,20 @@ pub type DefmtSender = Sender<'static, UsbDriver<'static, USB>>;
 
 /// Builder for the defmt USB logger task.
 ///
-/// Configures the flush threshold (`buflen`) and the idle poll interval
-/// (`timeout`), then spawns [`usb_defmt_task`] via [`UsbDefmtLogger::spawn`].
+/// Configures the idle poll interval (`timeout`), then spawns
+/// [`usb_defmt_task`] via [`UsbDefmtLogger::spawn`].
+///
+/// Buffers are flushed only at defmt frame boundaries (end-of-frame), never
+/// mid-frame, to preserve COBS stream integrity.
 ///
 /// # Example
 ///
 /// ```no_run
 /// UsbDefmtLogger::new()
-///     .with_buflen(64)
 ///     .with_timeout(Duration::from_millis(5))
 ///     .spawn(&spawner, sender);
 /// ```
 pub struct UsbDefmtLogger {
-    /// Soft flush threshold in bytes (≤ `USB_BUF_SIZE - 2`).
-    buflen: usize,
     /// How long to wait between drain attempts when the buffer is empty.
     timeout: Duration,
 }
@@ -513,29 +505,11 @@ impl Default for UsbDefmtLogger {
 
 impl UsbDefmtLogger {
     /// Create a logger with default settings:
-    /// - `buflen` = `USB_BUF_SIZE - 2` (flush when buffer is nearly full)
     /// - `timeout` = 10 ms
     pub const fn new() -> Self {
         Self {
-            buflen: USB_BUF_SIZE - 2,
             timeout: Duration::from_millis(10),
         }
-    }
-
-    /// Set the number of bytes that must accumulate before the buffer is
-    /// automatically flushed to USB.
-    ///
-    /// Clamped to `USB_BUF_SIZE - 2` (= `30` with the default 32-byte buffer).
-    /// Smaller values reduce latency at the cost of more USB transactions.
-    #[allow(dead_code)]
-    pub const fn with_buflen(mut self, buflen: usize) -> Self {
-        // Clamp silently: we cannot exceed the hard buffer limit.
-        self.buflen = if buflen > USB_BUF_SIZE - 2 {
-            USB_BUF_SIZE - 2
-        } else {
-            buflen
-        };
-        self
     }
 
     /// Set the idle poll interval — how long `usb_defmt_task` waits between
@@ -551,9 +525,6 @@ impl UsbDefmtLogger {
     /// Panics if the task has already been spawned (embassy task singleton
     /// contract).
     pub fn spawn(self, spawner: &embassy_executor::Spawner, sender: DefmtSender) {
-        CONTROLLER
-            .flush_threshold
-            .store(self.buflen, Ordering::Relaxed);
         spawner.spawn(usb_defmt_task(sender, self.timeout)).unwrap();
     }
 }
