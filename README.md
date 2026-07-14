@@ -17,7 +17,7 @@ An Embassy-based firmware example for the **RP235xA/B** (Raspberry Pi Pico 2) th
 |------|---------|
 | MCU  | RP235xA/B (embassy-rp `rp235xa`/`rp235xb` feature) |
 | Flash | 2 MiB |
-| RAM  | 512 KiB |
+| RAM  | 520 KiB |
 
 ## Prerequisites
 
@@ -68,6 +68,11 @@ src/
 memory.x          # Linker script for RP2350B flash/RAM layout
 build.rs          # Copies memory.x into OUT_DIR for the linker
 ```
+
+## Linux
+Copy `99-chickadee-rp2350.rules` to `/etc/udev/rules.d/` and
+run `sudo udevadm control --reload-rules && sudo udevadm trigger` to get read/write
+access to the RP2350 device.
 
 ## License
 
