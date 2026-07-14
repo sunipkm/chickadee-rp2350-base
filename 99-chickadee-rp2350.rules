@@ -1,0 +1,11 @@
+# udev rules for USB devices with VID 0xc0de (any PID)
+#
+# Install:
+#   sudo cp 99-chickadee-rp2350.rules /etc/udev/rules.d/
+#   sudo udevadm control --reload-rules
+#   sudo udevadm trigger
+
+SUBSYSTEM=="usb", ATTRS{idVendor}=="c0de", MODE="0666", TAG+="uaccess"
+
+# CDC-ACM serial ports created for these devices
+SUBSYSTEM=="tty", ATTRS{idVendor}=="c0de", MODE="0666", TAG+="uaccess"

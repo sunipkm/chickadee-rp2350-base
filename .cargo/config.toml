@@ -1,6 +1,7 @@
 [target.'cfg(all(target_arch = "arm", target_os = "none"))']
 # Default runner using probe-rs.
-runner = "probe-rs run --chip RP235x --protocol swd"
+runner = "chickadee-probe run --family rp2xxx-absolute"
+# runner = "probe-rs run --chip RP235x --protocol swd"
 
 # Uncomment to deploy via picotool instead:
 # runner = "picotool load -u -v -x --force"
@@ -18,3 +19,4 @@ rustflags = [
 
 [env]
 DEFMT_LOG = "info"
+EMBASSY_USB_MAX_INTERFACE_COUNT = "6" # two for command, two for logging, two for reset

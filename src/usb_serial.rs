@@ -234,10 +234,8 @@ impl AcmExt for SerialDev {
             if c.is_control() {
                 match c {
                     // Backspace / Delete
-                    '\x08' | '\x7f' => {
-                        if msg.pop().is_some() {
-                            self.write_message(b"\x08 \x08").await;
-                        }
+                    '\x08' | '\x7f' if msg.pop().is_some() => {
+                        self.write_message(b"\x08 \x08").await;
                     }
                     // Line feed / Carriage return → dispatch
                     '\n' | '\r' => {
