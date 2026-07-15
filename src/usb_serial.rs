@@ -27,7 +27,7 @@ use crate::{reset, resources};
 type SerialDev = CdcAcmClass<'static, UsbDriver<'static, USB>>;
 type UsbDevType = UsbDevice<'static, UsbDriver<'static, USB>>;
 /// Concrete type for the defmt drain task argument.
-type DefmtTask = defmt_embassy_usb::UsbDefmtTask<UsbDriver<'static, USB>>;
+type DefmtTask = embassy_defmt_usb::UsbDefmtTask<UsbDriver<'static, USB>>;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Setup
@@ -49,7 +49,7 @@ pub fn setup_usb(spawner: &Spawner, usbdev: resources::UsbDev) {
 
     let mut config = Config::new(0xc0de, 0xaa00);
     config.manufacturer = Some("Example");
-    config.product = Some("chickadee-rp2350-base");
+    config.product = Some("embassy-rp-base");
     config.serial_number = Some("0001");
     config.max_power = 100;
     config.max_packet_size_0 = 64;
@@ -76,13 +76,15 @@ pub fn setup_usb(spawner: &Spawner, usbdev: resources::UsbDev) {
 
     // CDC-ACM #1: defmt log sink — interface and "defmt" string handler
     // are registered by UsbDefmtLogger::build().
-    let defmt_task = defmt_embassy_usb::UsbDefmtLogger::new().build(&mut builder);
+    let defmt_task = embassy_defmt_usb::UsbDefmtLogger::new().build(&mut builder);
 
+    // Finalise the USB device and get a handle to it.
     let usb = USB_DEVICE.init(builder.build());
 
+    // Spawn the USB device task, defmt drain task, and serial command task.
     spawner.spawn(usb_device_task(usb)).unwrap();
-    spawner.spawn(serial_task(serial)).unwrap();
     spawner.spawn(defmt_drain_task(defmt_task)).unwrap();
+    spawner.spawn(serial_task(serial)).unwrap();
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -90,6 +92,7 @@ pub fn setup_usb(spawner: &Spawner, usbdev: resources::UsbDev) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 #[embassy_executor::task]
+// Embassy task that runs the USB device. Must be spawned with a reference to the `UsbDevice` returned by `setup_usb`.
 async fn usb_device_task(usb: &'static mut UsbDevType) {
     usb.run().await;
 }
@@ -112,7 +115,7 @@ async fn serial_task(dev: &'static mut SerialDev) {
     loop {
         dev.wait_connection().await;
         trace!("Serial connected");
-        dev.write_message(b"chickadee-rp2350-base\r\n> ").await;
+        dev.write_message(b"embassy-rp-base\r\n> ").await;
 
         loop {
             let Ok(n) = dev.read_packet(&mut rx_buf).await else {
@@ -161,7 +164,7 @@ async fn dispatch(dev: &mut SerialDev, line: &str) {
     match parse_command(line) {
         Command::Help => print_help(dev).await,
         Command::Version => {
-            dev.write_message(b"chickadee-rp2350-base v").await;
+            dev.write_message(b"embassy-rp-base v").await;
             dev.write_message(env!("CARGO_PKG_VERSION").as_bytes())
                 .await;
             dev.write_message(b"\r\n").await;
@@ -185,7 +188,8 @@ async fn dispatch(dev: &mut SerialDev, line: &str) {
 }
 
 async fn print_help(dev: &mut SerialDev) {
-    dev.write_message(b"chickadee-rp2350-base v").await;
+    dev.write_message(env!("CARGO_PKG_NAME").as_bytes()).await;
+    dev.write_message(b" v").await;
     dev.write_message(env!("CARGO_PKG_VERSION").as_bytes())
         .await;
     dev.write_message(b"\r\n---\r\n").await;

@@ -21,7 +21,7 @@ async fn main(spawner: Spawner) {
 
     usb_serial::setup_usb(&spawner, r.usbdev);
 
-    info!("chickadee-rp2350-base ready");
+    info!("{} ready", env!("CARGO_PKG_NAME"));
 
     let mut led = Output::new(r.leddev.pin, Level::Low);
     let mut high = false;

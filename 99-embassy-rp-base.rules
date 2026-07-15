@@ -1,7 +1,7 @@
 # udev rules for USB devices with VID 0xc0de (any PID)
 #
 # Install:
-#   sudo cp 99-chickadee-rp2350.rules /etc/udev/rules.d/
+#   sudo cp 99-embassy-rp-base.rules /etc/udev/rules.d/
 #   sudo udevadm control --reload-rules
 #   sudo udevadm trigger
 

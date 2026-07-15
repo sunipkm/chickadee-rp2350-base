@@ -1,15 +1,36 @@
 [target.'cfg(all(target_arch = "arm", target_os = "none"))']
-# Default runner using probe-rs.
-runner = "chickadee-probe run --family rp2xxx-absolute"
+# Default runner using probe-rp-usb.
+runner = "probe-rp-usb run --family rp2xxx-absolute" # RP2350x and RP2040
+
+# Uncomment to use probe-rs instead (requires probe-rs 0.15.0 or later):
 # runner = "probe-rs run --chip RP235x --protocol swd"
+# runner = "probe-rs run --chip RP2040 --protocol swd"
 
 # Uncomment to deploy via picotool instead:
 # runner = "picotool load -u -v -x --force"
 
+# ── Chip selection ────────────────────────────────────────────────────────────
+# Change BOTH the [build] target AND the Cargo feature together.
+# Mismatches are caught at compile time by build.rs.
+#
+#   Chip      | [build] target                 | Cargo feature
+#   ----------|--------------------------------|-------------------
+#   RP2350A/B | thumbv8m.main-none-eabihf      | rp235xa / rp235xb
+#   RP2040    | thumbv6m-none-eabi             | rp2040
+#
 [build]
-target = "thumbv8m.main-none-eabihf" # RP2350x
+target = "thumbv8m.main-none-eabihf" # RP2350x  ← paired with features = ["rp235xa"/"rp235xb"]
+# target = "thumbv6m-none-eabi"      # RP2040   ← paired with features = ["rp2040"]
 
 [target.thumbv8m.main-none-eabihf]
+linker = "rust-lld"
+rustflags = [
+    "-C", "link-arg=--nmagic",
+    "-C", "link-arg=-Tlink.x",
+    "-C", "link-arg=-Tdefmt.x",
+]
+
+[target.thumbv6m-none-eabi]
 linker = "rust-lld"
 rustflags = [
     "-C", "link-arg=--nmagic",

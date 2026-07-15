@@ -1,9 +1,5 @@
-[workspace]
-members = ["defmt-embassy-usb"]
-resolver = "2"
-
 [package]
-name = "chickadee-rp2350-base"
+name = "embassy-rp-base"
 version = "0.0.1"
 edition = "2024"
 
@@ -22,8 +18,6 @@ embassy-rp = { version = "0.10", features = [
     "unstable-pac",
     "time-driver",
     "critical-section-impl",
-    "rp235xa",
-    # "rp235xb",
 ] }
 embassy-usb = { version = "0.6" }
 defmt = "1.0"
@@ -35,7 +29,13 @@ static_cell = "2.1.1"
 portable-atomic = { version = "1.13", features = ["critical-section"] }
 heapless = { version = "0.9", features = ["defmt"] }
 assign-resources = { git = "https://github.com/adamgreig/assign-resources", rev = "bd22cb7a92031fb16f74a5da42469d466c33383e" }
-defmt-embassy-usb = { path = "defmt-embassy-usb", features = ["global-logger"] }
+embassy-defmt-usb = { version = "0.0.1", features = ["global-logger"] }
+
+[features]
+default = ["rp235xa"]
+rp235xa = ["embassy-rp/rp235xa"]
+rp235xb = ["embassy-rp/rp235xb"]
+rp2040 = ["embassy-rp/rp2040"]
 
 [profile.release]
 debug = 0
