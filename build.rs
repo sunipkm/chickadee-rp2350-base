@@ -13,7 +13,7 @@
 use std::{env, fs::File, io::Write, path::PathBuf};
 
 fn main() {
-    let rp2040  = env::var("CARGO_FEATURE_RP2040").is_ok();
+    let rp2040 = env::var("CARGO_FEATURE_RP2040").is_ok();
     let rp235xa = env::var("CARGO_FEATURE_RP235XA").is_ok();
     let rp235xb = env::var("CARGO_FEATURE_RP235XB").is_ok();
 
@@ -51,11 +51,11 @@ fn main() {
     }
 
     let memory_x: &[u8] = match (rp2040, rp235xa || rp235xb, is_riscv32) {
-        (true,  false, _)     => include_bytes!("rp2040.memory.x"),
-        (false, true,  false) => include_bytes!("rp2350.memory.x"),
-        (false, true,  true)  => include_bytes!("hazard3.memory.x"),
-        (true,  true,  _)     => panic!("`rp2040` cannot be combined with `rp235xa`/`rp235xb`"),
-        (false, false, _)     => panic!("enable exactly one of: `rp2040`, `rp235xa`, `rp235xb`"),
+        (true, false, _) => include_bytes!("rp2040.memory.x"),
+        (false, true, false) => include_bytes!("rp2350.memory.x"),
+        (false, true, true) => include_bytes!("hazard3.memory.x"),
+        (true, true, _) => panic!("`rp2040` cannot be combined with `rp235xa`/`rp235xb`"),
+        (false, false, _) => panic!("enable exactly one of: `rp2040`, `rp235xa`, `rp235xb`"),
     };
 
     let out = PathBuf::from(env::var("OUT_DIR").unwrap());
