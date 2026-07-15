@@ -1,3 +1,7 @@
+[workspace]
+members = ["defmt-embassy-usb"]
+resolver = "2"
+
 [package]
 name = "chickadee-rp2350-base"
 version = "0.0.1"
@@ -31,6 +35,7 @@ static_cell = "2.1.1"
 portable-atomic = { version = "1.13", features = ["critical-section"] }
 heapless = { version = "0.9", features = ["defmt"] }
 assign-resources = { git = "https://github.com/adamgreig/assign-resources", rev = "bd22cb7a92031fb16f74a5da42469d466c33383e" }
+defmt-embassy-usb = { path = "defmt-embassy-usb", features = ["global-logger"] }
 
 [profile.release]
 debug = 0

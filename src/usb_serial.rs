@@ -18,7 +18,7 @@ use embassy_usb::{
 use heapless::String;
 use static_cell::StaticCell;
 
-use crate::{defmt_usb, reset, resources};
+use crate::{reset, resources};
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Type aliases
@@ -26,6 +26,8 @@ use crate::{defmt_usb, reset, resources};
 
 type SerialDev = CdcAcmClass<'static, UsbDriver<'static, USB>>;
 type UsbDevType = UsbDevice<'static, UsbDriver<'static, USB>>;
+/// Concrete type for the defmt drain task argument.
+type DefmtTask = defmt_embassy_usb::UsbDefmtTask<UsbDriver<'static, USB>>;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Setup
@@ -73,15 +75,14 @@ pub fn setup_usb(spawner: &Spawner, usbdev: resources::UsbDev) {
     ));
 
     // CDC-ACM #1: defmt log sink — interface and "defmt" string handler
-    // are installed by UsbDefmtLogger::build().
-    let defmt_logger = defmt_usb::UsbDefmtLogger::new().build(&mut builder);
+    // are registered by UsbDefmtLogger::build().
+    let defmt_task = defmt_embassy_usb::UsbDefmtLogger::new().build(&mut builder);
 
     let usb = USB_DEVICE.init(builder.build());
 
     spawner.spawn(usb_device_task(usb)).unwrap();
     spawner.spawn(serial_task(serial)).unwrap();
-
-    defmt_logger.spawn(spawner);
+    spawner.spawn(defmt_drain_task(defmt_task)).unwrap();
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -91,6 +92,12 @@ pub fn setup_usb(spawner: &Spawner, usbdev: resources::UsbDev) {
 #[embassy_executor::task]
 async fn usb_device_task(usb: &'static mut UsbDevType) {
     usb.run().await;
+}
+
+/// Embassy task that drains defmt bytes over the CDC-ACM bulk-IN endpoint.
+#[embassy_executor::task]
+async fn defmt_drain_task(task: DefmtTask) {
+    task.run().await;
 }
 
 /// USB serial command shell task.

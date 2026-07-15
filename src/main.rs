@@ -8,7 +8,6 @@ use embassy_time::{Duration, Timer};
 
 use panic_probe as _;
 
-mod defmt_usb;
 mod reset;
 mod resources;
 mod usb_serial;
