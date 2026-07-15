@@ -342,9 +342,9 @@ checksum = "91622ff5e7162018101f2fea40d6ebf4a78bbe5a49736a2020649edf9693679e"
 
 [[package]]
 name = "embassy-defmt-usb"
-version = "0.0.1"
+version = "0.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "babf026ef31ab5ac1d080e505d2cd4f6b9f70d716daa3093be80c39a2ca6c323"
+checksum = "e4bfbbe19721b26fd1f433f3a85eb0da4ba879cbdd7480b01972a3aaad0fce22"
 dependencies = [
  "critical-section",
  "defmt",
