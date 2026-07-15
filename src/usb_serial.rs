@@ -82,9 +82,9 @@ pub fn setup_usb(spawner: &Spawner, usbdev: resources::UsbDev) {
     let usb = USB_DEVICE.init(builder.build());
 
     // Spawn the USB device task, defmt drain task, and serial command task.
-    spawner.spawn(usb_device_task(usb)).unwrap();
-    spawner.spawn(defmt_drain_task(defmt_task)).unwrap();
-    spawner.spawn(serial_task(serial)).unwrap();
+    spawner.spawn(usb_device_task(usb).unwrap());
+    spawner.spawn(defmt_drain_task(defmt_task).unwrap());
+    spawner.spawn(serial_task(serial).unwrap());
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -172,7 +172,10 @@ async fn dispatch(dev: &mut SerialDev, line: &str) {
         Command::Reset => {
             dev.write_message(b"Resetting...\r\n").await;
             Timer::after(Duration::from_millis(200)).await;
+            #[cfg(target_arch = "arm")]
             cortex_m::peripheral::SCB::sys_reset();
+            #[cfg(not(target_arch = "arm"))]
+            panic!("soft reset");
         }
         Command::Clear => {
             // ANSI: clear screen + move cursor to home.

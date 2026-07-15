@@ -1,4 +1,4 @@
-[target.'cfg(all(target_arch = "arm", target_os = "none"))']
+[target.'cfg(all(any(target_arch = "arm", target_arch = "riscv32"), target_os = "none"))']
 # Default runner using probe-rp-usb.
 runner = "probe-rp-usb run --family rp2xxx-absolute" # RP2350x and RP2040
 
@@ -13,13 +13,15 @@ runner = "probe-rp-usb run --family rp2xxx-absolute" # RP2350x and RP2040
 # Change BOTH the [build] target AND the Cargo feature together.
 # Mismatches are caught at compile time by build.rs.
 #
-#   Chip      | [build] target                 | Cargo feature
-#   ----------|--------------------------------|-------------------
-#   RP2350A/B | thumbv8m.main-none-eabihf      | rp235xa / rp235xb
-#   RP2040    | thumbv6m-none-eabi             | rp2040
+#   Chip           | [build] target                 | Cargo feature
+#   ---------------|--------------------------------|-------------------
+#   RP2350A/B (ARM)| thumbv8m.main-none-eabihf      | rp235xa / rp235xb
+#   RP2350A/B (RV) | riscv32imac-unknown-none-elf   | rp235xa / rp235xb
+#   RP2040         | thumbv6m-none-eabi             | rp2040
 #
 [build]
 target = "thumbv8m.main-none-eabihf" # RP2350x  ← paired with features = ["rp235xa"/"rp235xb"]
+# target = "riscv32imac-unknown-none-elf" # RP2350x (RISC-V) ← paired with features = ["rp235xa"/"rp235xb"]
 # target = "thumbv6m-none-eabi"      # RP2040   ← paired with features = ["rp2040"]
 
 [target.thumbv8m.main-none-eabihf]
@@ -36,6 +38,29 @@ rustflags = [
     "-C", "link-arg=--nmagic",
     "-C", "link-arg=-Tlink.x",
     "-C", "link-arg=-Tdefmt.x",
+]
+
+# This is the soft-float ABI for RISC-V mode.
+#
+# Hazard 3 does not have an FPU and so float function arguments use integer
+# registers.
+[target.riscv32imac-unknown-none-elf]
+# Pass some extra options to rustc, some of which get passed on to the linker.
+#
+# * linker argument --nmagic turns off page alignment of sections (which saves
+#   flash space)
+# * linker argument -Trp235x_riscv.x also tells the linker to use
+#   `hazard3.x` as a linker script. This adds in RP2350 RISC-V specific
+#   things that the riscv-rt crate's `link.x` requires and then includes
+#   `link.x` automatically. This is the reverse of how we do it on Cortex-M.
+# * linker argument -Tdefmt.x also tells the linker to use `defmt.x` as a
+#   secondary linker script. This is required to make defmt_rtt work.
+linker = "rust-lld"
+rustflags = [
+  "-C", "link-arg=--nmagic",
+  "-C", "link-arg=-Tmemory.x",  # MEMORY block + REGION_ALIAS for riscv-rt
+  "-C", "link-arg=-Tlink.x",    # riscv-rt section layout (reads REGION_* aliases)
+  "-C", "link-arg=-Tdefmt.x",
 ]
 
 [env]

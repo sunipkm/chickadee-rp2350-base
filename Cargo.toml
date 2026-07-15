@@ -4,8 +4,7 @@ version = "0.0.1"
 edition = "2024"
 
 [dependencies]
-embassy-executor = { version = "0.9", features = [
-    "arch-cortex-m",
+embassy-executor = { version = "0.10", features = [
     "executor-thread",
     "defmt",
 ] }
@@ -21,15 +20,23 @@ embassy-rp = { version = "0.10", features = [
 ] }
 embassy-usb = { version = "0.6" }
 defmt = "1.0"
-cortex-m = { version = "0.7.6", features = ["inline-asm"] }
-cortex-m-rt = "0.7.0"
 critical-section = "1.1"
-panic-probe = { version = "1.0", features = ["print-defmt"] }
 static_cell = "2.1.1"
 portable-atomic = { version = "1.13", features = ["critical-section"] }
 heapless = { version = "0.9", features = ["defmt"] }
 assign-resources = { git = "https://github.com/adamgreig/assign-resources", rev = "bd22cb7a92031fb16f74a5da42469d466c33383e" }
 embassy-defmt-usb = { version = "0.0.1", features = ["global-logger"] }
+
+[target.'cfg(target_arch = "arm")'.dependencies]
+embassy-executor = { version = "0.10", features = ["platform-cortex-m"] }
+cortex-m = { version = "0.7.6", features = ["inline-asm"] }
+cortex-m-rt = "0.7.0"
+panic-probe = { version = "1.0", features = ["print-defmt"] }
+
+[target.'cfg(target_arch = "riscv32")'.dependencies]
+embassy-executor = { version = "0.10", features = ["platform-riscv32"] }
+riscv-rt = "0.12"
+panic-halt = "1.0"
 
 [features]
 default = ["rp235xa"]

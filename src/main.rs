@@ -6,7 +6,10 @@ use embassy_executor::Spawner;
 use embassy_rp::gpio::{Level, Output};
 use embassy_time::{Duration, Timer};
 
+#[cfg(target_arch = "arm")]
 use panic_probe as _;
+#[cfg(target_arch = "riscv32")]
+use panic_halt as _;
 
 mod reset;
 mod resources;
