@@ -26,8 +26,10 @@ use core::{
 
 use embassy_rp::{peripherals::USB, usb::Driver as UsbDriver};
 use embassy_time::{Duration, Timer};
-use embassy_usb::{class::cdc_acm::Sender, driver::EndpointError};
+use embassy_usb::{Builder, Handler, types::StringIndex};
+use embassy_usb::driver::{Driver as UsbDriverTrait, Endpoint as UsbEndpoint, EndpointIn as UsbEndpointIn, EndpointError};
 use portable_atomic::AtomicBool as PortableAtomicBool;
+use static_cell::StaticCell;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // RTT infrastructure  (ported verbatim from defmt-rtt 1.1.0)
@@ -475,12 +477,26 @@ unsafe impl defmt::Logger for MultiLogger {
 // ─────────────────────────────────────────────────────────────────────────────
 
 /// Concrete sender type for the defmt CDC ACM interface.
-pub type DefmtSender = Sender<'static, UsbDriver<'static, USB>>;
+pub type DefmtSender = <UsbDriver<'static, USB> as UsbDriverTrait<'static>>::EndpointIn;
+
+// ── Private handler ──────────────────────────────────────────────────────────
+
+struct DefmtStringHandler {
+    defmt_str: StringIndex,
+}
+
+impl Handler for DefmtStringHandler {
+    fn get_string(&mut self, index: StringIndex, _lang_id: u16) -> Option<&str> {
+        (index == self.defmt_str).then_some("defmt")
+    }
+}
 
 /// Builder for the defmt USB logger task.
 ///
-/// Configures the idle poll interval (`timeout`), then spawns
-/// [`usb_defmt_task`] via [`UsbDefmtLogger::spawn`].
+/// Call [`build`](Self::build) to register the CDC-ACM interface (with the
+/// `"defmt"` iInterface string) on the USB [`Builder`], then call
+/// [`UsbDefmtTask::spawn`] on the returned value after [`Builder::build`] to
+/// start the drain task.
 ///
 /// Buffers are flushed only at defmt frame boundaries (end-of-frame), never
 /// mid-frame, to preserve COBS stream integrity.
@@ -488,9 +504,11 @@ pub type DefmtSender = Sender<'static, UsbDriver<'static, USB>>;
 /// # Example
 ///
 /// ```no_run
-/// UsbDefmtLogger::new()
+/// let task = UsbDefmtLogger::new()
 ///     .with_timeout(Duration::from_millis(5))
-///     .spawn(&spawner, sender);
+///     .build(&mut builder);          // registers interface + string handler
+/// let usb = builder.build();
+/// task.spawn(&spawner);              // starts the drain task
 /// ```
 pub struct UsbDefmtLogger {
     /// How long to wait between drain attempts when the buffer is empty.
@@ -520,12 +538,70 @@ impl UsbDefmtLogger {
         self
     }
 
-    /// Apply the configuration and spawn [`usb_defmt_task`].
+    /// Register the defmt CDC-ACM interface on `builder` and return a
+    /// [`UsbDefmtTask`] holding the allocated bulk-IN endpoint.
+    /// Must be called before `builder.build()`.
+    ///
+    /// Builds a CDC function with two interfaces:
+    /// - Comm interface (class 0x02/0x02/0x01) with iInterface = `"defmt"`
+    /// - Data interface (class 0x0A/0x00/0x00) with bulk IN/OUT endpoints
+    pub fn build(self, builder: &mut Builder<'static, UsbDriver<'static, USB>>) -> UsbDefmtTask {
+        static DEFMT_STRING_HANDLER: StaticCell<DefmtStringHandler> = StaticCell::new();
+
+        let (ep_in, defmt_str) = {
+            let mut func = builder.function(0x02, 0x02, 0x00);
+
+            // Comm interface: carries the "defmt" iInterface string.
+            let defmt_str = {
+                let mut comm = func.interface();
+                let str_idx = comm.string();
+                let num = comm.interface_number();
+                let mut alt = comm.alt_setting(0x02, 0x02, 0x01, Some(str_idx));
+                // CDC Header functional descriptor (CDC spec v1.10).
+                alt.descriptor(0x24, &[0x00, 0x10, 0x01]);
+                // CDC ACM functional descriptor (capabilities 0x06).
+                alt.descriptor(0x24, &[0x02, 0x06]);
+                // CDC Union functional descriptor (comm = this, data = comm + 1).
+                alt.descriptor(0x24, &[0x06, num.0, num.0 + 1]);
+                // Notification endpoint (required by spec; not used by defmt).
+                alt.endpoint_interrupt_in(None, 8, 255);
+                str_idx
+            };
+
+            // Data interface: the bulk IN endpoint is the defmt byte stream.
+            let ep_in = {
+                let mut data = func.interface();
+                let mut alt = data.alt_setting(0x0A, 0x00, 0x00, None);
+                let _ = alt.endpoint_bulk_out(None, 64);
+                alt.endpoint_bulk_in(None, 64)
+            };
+
+            (ep_in, defmt_str)
+        };
+
+        let handler = DEFMT_STRING_HANDLER.init(DefmtStringHandler { defmt_str });
+        builder.handler(handler);
+
+        UsbDefmtTask { timeout: self.timeout, sender: ep_in }
+    }
+}
+
+/// A configured defmt USB logger ready to be spawned.
+///
+/// Obtained from [`UsbDefmtLogger::build`].  Call [`spawn`](Self::spawn) after
+/// [`Builder::build`] to start the drain task.
+pub struct UsbDefmtTask {
+    timeout: Duration,
+    sender: DefmtSender,
+}
+
+impl UsbDefmtTask {
+    /// Spawn [`usb_defmt_task`].
     ///
     /// Panics if the task has already been spawned (embassy task singleton
     /// contract).
-    pub fn spawn(self, spawner: &embassy_executor::Spawner, sender: DefmtSender) {
-        spawner.spawn(usb_defmt_task(sender, self.timeout)).unwrap();
+    pub fn spawn(self, spawner: &embassy_executor::Spawner) {
+        spawner.spawn(usb_defmt_task(self.sender, self.timeout)).unwrap();
     }
 }
 
@@ -537,21 +613,21 @@ impl UsbDefmtLogger {
 #[embassy_executor::task]
 async fn usb_defmt_task(mut sender: DefmtSender, timeout: Duration) {
     'main: loop {
-        // Wait for a host to open the serial port.
-        sender.wait_connection().await;
+        // Wait for the endpoint to be enabled (USB enumeration complete).
+        sender.wait_enabled().await;
         CONTROLLER.enable();
 
         loop {
             // Drain one flushing buffer per iteration (if any).
             if let Some((idx, buf)) = CONTROLLER.get_flushing() {
                 let bytes = &buf.data[..buf.cursor];
-                let max = sender.max_packet_size() as usize;
+                let max = sender.info().max_packet_size as usize;
                 let mut last_was_max = false;
 
                 let mut write_err: Option<EndpointError> = None;
                 for chunk in bytes.chunks(max) {
                     last_was_max = chunk.len() == max;
-                    match sender.write_packet(chunk).await {
+                    match sender.write(chunk).await {
                         Ok(()) => {}
                         Err(e) => {
                             write_err = Some(e);
@@ -563,7 +639,7 @@ async fn usb_defmt_task(mut sender: DefmtSender, timeout: Duration) {
                 // Per USB CDC spec: if the last transfer was exactly max-packet-
                 // size, send a zero-length packet to signal end-of-transfer.
                 if write_err.is_none() && last_was_max {
-                    write_err = sender.write_packet(&[]).await.err();
+                    write_err = sender.write(&[]).await.err();
                 }
 
                 // Always reset the buffer whether or not an error occurred.

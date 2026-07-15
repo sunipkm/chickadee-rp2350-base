@@ -37,7 +37,6 @@ type UsbDevType = UsbDevice<'static, UsbDriver<'static, USB>>;
 pub fn setup_usb(spawner: &Spawner, usbdev: resources::UsbDev) {
     static USB_DEVICE: StaticCell<UsbDevType> = StaticCell::new();
     static SERIAL_STATE: StaticCell<CdcAcmState> = StaticCell::new();
-    static LOGGER_STATE: StaticCell<CdcAcmState> = StaticCell::new();
     static SERIAL_DEV: StaticCell<SerialDev> = StaticCell::new();
     static CONF_DESC: StaticCell<[u8; 256]> = StaticCell::new();
     static BOS_DESC: StaticCell<[u8; 256]> = StaticCell::new();
@@ -73,16 +72,16 @@ pub fn setup_usb(spawner: &Spawner, usbdev: resources::UsbDev) {
         64,
     ));
 
-    // CDC-ACM #1: defmt log sink (write side only; read half is discarded).
-    let logger = CdcAcmClass::new(&mut builder, LOGGER_STATE.init(CdcAcmState::new()), 64);
+    // CDC-ACM #1: defmt log sink — interface and "defmt" string handler
+    // are installed by UsbDefmtLogger::build().
+    let defmt_logger = defmt_usb::UsbDefmtLogger::new().build(&mut builder);
 
     let usb = USB_DEVICE.init(builder.build());
 
     spawner.spawn(usb_device_task(usb)).unwrap();
     spawner.spawn(serial_task(serial)).unwrap();
 
-    let (defmt_sender, _) = logger.split();
-    defmt_usb::UsbDefmtLogger::new().spawn(spawner, defmt_sender);
+    defmt_logger.spawn(spawner);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
