@@ -11,7 +11,6 @@ use panic_halt as _;
 #[cfg(target_arch = "arm")]
 use panic_probe as _;
 
-mod reset;
 mod resources;
 mod usb_serial;
 

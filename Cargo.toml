@@ -26,6 +26,7 @@ portable-atomic = { version = "1.13", features = ["critical-section"] }
 heapless = { version = "0.9", features = ["defmt"] }
 assign-resources = { git = "https://github.com/adamgreig/assign-resources", rev = "bd22cb7a92031fb16f74a5da42469d466c33383e" }
 embassy-defmt-usb = { version = "0.0.2", features = ["global-logger"] }
+rp-usb-reset = { version = "0.0.1" }
 
 [target.'cfg(target_arch = "arm")'.dependencies]
 embassy-executor = { version = "0.10", features = ["platform-cortex-m"] }

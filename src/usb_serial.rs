@@ -12,13 +12,13 @@ use embassy_executor::Spawner;
 use embassy_rp::{peripherals::USB, usb::Driver as UsbDriver};
 use embassy_time::{Duration, Timer};
 use embassy_usb::{
-    Builder, Config, UsbDevice,
+    Config, UsbDevice,
     class::cdc_acm::{CdcAcmClass, State as CdcAcmState},
 };
 use heapless::String;
 use static_cell::StaticCell;
 
-use crate::{reset, resources};
+use crate::resources;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Type aliases
@@ -40,10 +40,6 @@ pub fn setup_usb(spawner: &Spawner, usbdev: resources::UsbDev) {
     static USB_DEVICE: StaticCell<UsbDevType> = StaticCell::new();
     static SERIAL_STATE: StaticCell<CdcAcmState> = StaticCell::new();
     static SERIAL_DEV: StaticCell<SerialDev> = StaticCell::new();
-    static CONF_DESC: StaticCell<[u8; 256]> = StaticCell::new();
-    static BOS_DESC: StaticCell<[u8; 256]> = StaticCell::new();
-    static CONTROL_BUF: StaticCell<[u8; 64]> = StaticCell::new();
-    static RESET_HANDLER: StaticCell<reset::KiwiUsbReset> = StaticCell::new();
 
     let driver = UsbDriver::new(usbdev.usb, resources::Irqs);
 
@@ -54,18 +50,7 @@ pub fn setup_usb(spawner: &Spawner, usbdev: resources::UsbDev) {
     config.max_power = 100;
     config.max_packet_size_0 = 64;
 
-    let mut builder = Builder::new(
-        driver,
-        config,
-        CONF_DESC.init([0; 256]),
-        BOS_DESC.init([0; 256]),
-        &mut [],
-        CONTROL_BUF.init([0; 64]),
-    );
-
-    // Vendor interface: USB reset → BOOTSEL (request 0x01).
-    let reset_handler = RESET_HANDLER.init(reset::KiwiUsbReset::from(&mut builder));
-    builder.handler(reset_handler);
+    let mut builder = rp_usb_reset::build_usb_builder!(driver, config);
 
     // CDC-ACM #0: interactive command shell.
     let serial = SERIAL_DEV.init(CdcAcmClass::new(
